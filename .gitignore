@@ -1,0 +1,8 @@
+
+.vscode/settings.json
+
+./logs
+
+logs/
+
+*.pyc
