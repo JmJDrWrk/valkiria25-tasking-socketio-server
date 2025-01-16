@@ -1,16 +1,20 @@
 from print_service import Printer
+
 # Initialize logging and socketio
 print = Printer(__file__).print
 
+import json
 import socketio
 from typing import Dict
 from task_manager import TaskManager, Task
+from client import WebClient
+from session_manager import SessionManager
 
 
 class WebClients:
-    def __init__(self, taskManager: TaskManager):
+    def __init__(self, sessionManager: SessionManager, taskManager: TaskManager):
         self.taskManager: TaskManager = taskManager
-
+        self.sessionManager: SessionManager = sessionManager
         self.clients: Dict[str, str] = {}
 
     def forward(self, sio: socketio.Server):
@@ -23,54 +27,68 @@ class WebClients:
                 task.__json__()
                 for task in tasks
             ]
-            sio.emit('your_tasks', {"tasks": serialized_tasks}, room=sid)
+            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
 
         @sio.event
-        def push_task(sid, client_identifier, task_data):
+        def push_task(sid, task):
 
-            '''
-            task_data = {
-                sid,
-                client_identifier,
-                data: raw,
-                service: songsplitter
-            }
-            '''
-            # sid = self.clients[client_identifier]
+            token: str = self.sessionManager.get_session_by_sid(sid)
 
-            print('Sid', sid)
-            
-            task = Task(client_id=client_identifier, data=task_data, last_sid=sid)
+            client_as_json: dict = (
+                self.sessionManager.authenticationService.decrypt_token_to_json(token)
+            )
+            print("loaded client_as_json", client_as_json)
+            client: WebClient = WebClient(**client_as_json)
+
+            print("loaded webclient", client.__json__())
+
+            print('t', task)
+
+            task = Task(token=token, data=task['task']['data'], last_sid=sid, task_type=task['task']['task_type'])
 
             task_identifier = self.taskManager.push_task(task)
             # Create fallback control
+            # Its important to notice, that here is not possible to get decrypted info of the user, as long
+            # as we only have access to the session manager but not to the auth service!!
+            print(f"Client **** (SID: {sid}) pushed a task.")
 
-            print(f"Client {client_identifier} (SID: {sid}) pushed a task.")
-            
-            sio.emit('task_pushed', {task_identifier: task_identifier}, room=sid)
-            tasks = self.taskManager.get_by_client(client_identifier)
+            sio.emit("task_pushed", {task_identifier: task_identifier}, room=sid)
+            tasks = self.taskManager.get_by_token(token)
             serialized_tasks = [
                 # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
                 task.__json__()
                 for task in tasks
             ]
-            sio.emit('your_tasks', {"tasks": serialized_tasks}, room=sid)
+            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
+
+        """This channel is for heavy-load-tasks"""
 
         @sio.event
-        def register_as_webclient(sid, client_identifier):
-            """
-            Registers a client with a unique identifier.
-            If the client reloads the page, update their session.
-            """
-
-            if client_identifier in self.clients:
-                # Update session for existing client
-                print(
-                    f"web client reconnected: {client_identifier} (Old SID: {self.clients[client_identifier]}, New SID: {sid})"
+        def push_task_data(sid, task, chunk):
+            webClient: WebClient = WebClient(
+                **self.sessionManager.authenticationService.decrypt_token_to_json(
+                    self.sessionManager.get_session_by_sid(sid)
                 )
-            else:
-                # Register new client
-                print(f"new web client registered: {client_identifier} (SID: {sid})")
+            )
+            if not webClient:
+                print("webClient not valid!")
+                return False
 
-            # Map the unique client identifier to the current session ID
-            self.clients[client_identifier] = sid
+            # get real task from task_id
+            real_task: Task = self.taskManager._task_map.get(task["task_id"])
+
+            print("real_task", real_task.__json__())
+
+            service_sid = self.sessionManager.get_session(
+                    real_task.assigned_service
+                )
+
+            if not service_sid:
+                print('service_sid, not found!. Maybe the service has disconnected!')
+                return None
+
+            sio.emit(
+                "service_task_data_in",
+                chunk,
+                room=service_sid
+            )

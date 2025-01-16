@@ -29,27 +29,16 @@ sessionManager = SessionManager(authenticationService)
 
 @sio.event
 def connect(sid, environ, auth):
-    # print(f'sid {sid} e {environ}')
-
-    client: Client = sessionManager.create_session(auth.get('token'))
+    client: Client = sessionManager.create_session(auth.get('token'), sid)
 
     if not client:
         return False
     
     print('client connection allowed')
+
+    # check for tasks
     
     
-
-# Example function for token validation
-def validate_token(token):
-    # Replace with your token validation logic
-    return token == "expected-token"
-
-# Example function to determine client role
-def determine_client_role(environ):
-    # Example: Role determined by a query parameter or header
-    return environ.get('QUERY_STRING', 'unknown')
-
 @sio.event
 def disconnect(sid):
     print('Disconnect is doing nothing, pay attention to this if note POLTERGEIST BEHAVIOR')
@@ -76,16 +65,13 @@ from load_balancer import LoadBalancer
 load_balancer: LoadBalancer = LoadBalancer(task_manager)
 
 from clients_handler import WebClients
-web_clients: WebClients = WebClients(task_manager)
+web_clients: WebClients = WebClients(sessionManager, task_manager)
 
 from workers_handler import RemoteLocalClients
-remote_local_clients: RemoteLocalClients = RemoteLocalClients(task_manager)
+remote_local_clients: RemoteLocalClients = RemoteLocalClients(sessionManager, task_manager)
 
-from client_manager import ClientManager
-client_manager = ClientManager()
 
 web_clients.forward(sio)
-
 remote_local_clients.forward(sio)
 
 # # Start task processing in a separate thread
@@ -104,7 +90,7 @@ if __name__ == "__main__":
         _print(Fore.CYAN + '> server encrypted usins SSL keys \n> property of Jaime Roman Gil\n' + Style.RESET_ALL)
         
         server = eventlet.wrap_ssl(
-            eventlet.listen(('0.0.0.0', 4999)),
+            eventlet.listen(('0.0.0.0', 5113)),
             certfile='/etc/letsencrypt/live/netofcomputers.com/fullchain.pem',
             keyfile='/etc/letsencrypt/live/netofcomputers.com/privkey.pem',
             server_side=True

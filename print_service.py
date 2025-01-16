@@ -26,8 +26,8 @@ colorMap = {
     'service': {
         'auth_manager': [Fore.WHITE, Back.BLUE, Style.NORMAL],
         'workers_handler': [Fore.GREEN, Back.BLACK, Style.BRIGHT],
-        'controllers': [Fore.YELLOW, Back.BLACK, Style.BRIGHT],
-        'decorators': [Fore.MAGENTA, Back.BLACK, Style.BRIGHT],
+        'task_manager': [Fore.YELLOW, Back.BLACK, Style.BRIGHT],
+        'session_manager': [Fore.MAGENTA, Back.BLACK, Style.BRIGHT],
         'IoServer': [Fore.RED, Back.BLACK, Style.BRIGHT],
         'print_service': [Fore.CYAN, Back.BLACK, Style.BRIGHT],
         'self_control': [Fore.LIGHTWHITE_EX, Back.BLUE, Style.NORMAL],
