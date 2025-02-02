@@ -19,14 +19,18 @@ class WebClients:
 
     def forward(self, sio: socketio.Server):
 
+        # Step any: Triggered from anywhere: Request current tasks
         @sio.event
-        def my_tasks(sid):
+        def request_current_tasks(sid):
+            # Create fallback control
+            # Its important to notice, that here is not possible to get decrypted info of the user, as long
+            # as we only have access to the session manager but not to the auth service!!
             tasks = self.taskManager.get_by_token(self.sessionManager.get_session_by_sid(sid))
             serialized_tasks = [
                 task.__json__()
                 for task in tasks
             ]
-            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
+            sio.emit("response_current_tasks", {"tasks": serialized_tasks}, room=sid)
 
         # Step 1: Triggered by web client: Create a task pushing its data
         @sio.event
@@ -49,24 +53,13 @@ class WebClients:
             task_identifier = self.taskManager.push_task(task)
             task.next_state(opt=True) # pushed-> waiting_asignment
 
-            # Create fallback control
-            # Its important to notice, that here is not possible to get decrypted info of the user, as long
-            # as we only have access to the session manager but not to the auth service!!
+
             print(f"Client **** (SID: {sid}) pushed a task.")
+            request_current_tasks(sid)
 
-            sio.emit("task_pushed", {task_identifier: task_identifier}, room=sid)
-            tasks: List[Task] = self.taskManager.get_by_token(token)
-            serialized_tasks = [
-                # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
-                task.__json__()
-                for task in tasks
-            ]
-            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
-
-        """This channel is for heavy-load-tasks"""
-
+        # Step 4: Notify web client sended all chunks to service NOT THE SAME AS being received by service
         @sio.event
-        def end_pushing_data(sid, task):
+        def web_to_service_chunks_ended(sid, task):
             print('t', task)
 
             real_task: Task = self.taskManager._task_map.get(task['task_id'])
@@ -77,14 +70,12 @@ class WebClients:
             service_sid:str = self.sessionManager.get_session(service_token)
 
             print('sending file_transfer_complete event to service')
-            sio.emit('file_transfer_complete', task, room=service_sid)
+            sio.emit('web_to_service_chunks_ended', task, room=service_sid)
 
-        # Step 5 after client receives service notification and starts uploading content
+        # Step 3: Forward chunks from web to service
         @sio.event
-        def push_task_data(sid, chunkData):
-            print('pushing data')
-            # print('c', chunkData)
-        
+        def web_to_service_chunk(sid, chunkData):
+            print('forwarding chunk')     
             pure_task = chunkData['task']
 
             webClient: WebClient = WebClient(
@@ -112,9 +103,9 @@ class WebClients:
             if not service_sid:
                 print('service_sid, not found!. Maybe the service has disconnected!')
                 return None
-
+            # forward the chunk from webclient to service
             sio.emit(
-                "service_task_data_in",
+                "web_to_service_chunk",
                 chunkData,
                 room=service_sid
             )
@@ -123,15 +114,15 @@ class WebClients:
         def delete_task(sid, taskId):
             real_task: Task = self.taskManager.delete(taskId)
             print('task deleted', real_task)
-            sio.emit('update_now', {}, room=sid)
+            request_current_tasks(sid)
 
         #Requiers
         @sio.event
-        def retrieve_task_file(sid, task):
+        def request_file_from_task(sid, task):
             real_task: Task = self.taskManager._task_map.get(task['task_id'])
             service_token:str = real_task.assigned_service
             service_sid:str = self.sessionManager.get_session(service_token)
-            sio.emit('retrieve_file_from_task', task , room=service_sid)
+            sio.emit('send_chunks_of_file_from_task', task , room=service_sid)
 
         #NOt needed if serviceCLient updates this when finished
         # def files_for_task(sid, task):
