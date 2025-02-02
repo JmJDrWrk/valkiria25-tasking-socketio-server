@@ -48,6 +48,9 @@ class StateString:
 
     @staticmethod
     def next(task, opt):
+        if task.state == StateString.ended_with_errors:
+            return
+
         if task.state == StateString.pushed:
             task.state = StateString.waiting_assignment
 
@@ -74,7 +77,7 @@ class StateString:
 
         elif task.state == StateString.processing:
             task.state = StateString.processed
-
+            task.processed = True
         elif task.state == StateString.processed:
             task.state = StateString.waiting_result_rescue
 
@@ -126,11 +129,15 @@ class Task:
     def has_been_pulled(self) -> bool:
         return self.pulled == True
     
-    def next_state(self, opt=True):
+    def next_state(self, opt=True, overrideTo=False):
         '''Goes to next state and pass arg if possible if opt False may mean completed with errors or failed'''
         print('previous_state', self.state)
-        StateString.next(self, opt)
+        if not overrideTo:
+            StateString.next(self, opt)
+        else:
+            self.state = overrideTo
         print('current_state', self.state)
+    
     
     def __repr__(self):
         return f"Task(task_id={self.task_id}, token={self.token}, data={self.data})"
@@ -162,6 +169,30 @@ class TaskManager:
         self._tasks: List[Task] = []  # List to store tasks
         self._task_map = {}  # Dictionary for O(1) task lookup by task_id
         self._lock = Lock()  # Ensure thread-safe operations
+
+
+    def delete(self, taskId: str) -> Optional[Task]:
+        """
+        Deletes a task from the manager using its task ID.
+
+        :param taskId: The unique identifier of the task to delete.
+        :return: The deleted Task instance if successful, or None if the task does not exist.
+        """
+        with self._lock:
+            # Try to get the task from the map
+            task: Task = self._task_map.pop(taskId, None)
+            
+            if task is None:
+                # Task with the specified taskId not found
+                print(f"Task with ID {taskId} not found.")
+                return None
+            
+            # Remove task from the task list
+            self._tasks = [t for t in self._tasks if t.task_id != taskId]
+
+            print(f"Task with ID {taskId} deleted: {task}")
+            return task
+
 
     def get_by_token(self, token: str) -> List[Task]:
         """
@@ -201,15 +232,15 @@ class TaskManager:
         with self._lock:
             task: Task = self._task_map.get(task_identifier)
             if not task:
-                print(f'task with id {task_identifier} not found, getting first')
+                # print(f'task with id {task_identifier} not found, getting first')
                 available_tasks = [t for t in self._tasks if not t.pulled]
                 
                 if len(available_tasks) <= 0:
-                    print('No tasks avaliable')
+                    # print('No tasks avaliable')
                     return None
 
                 task: Task = available_tasks[0]
-                print('found', task)
+                # print('found', task)
             
             if task:
                 if task.pulled:

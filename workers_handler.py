@@ -22,13 +22,21 @@ class RemoteLocalClients:
         @sio.event
         def task_processing_started(sid, task):
             real_task: Task = self.taskManager._task_map.get(task["task_id"])
-            real_task.next_state(opt=True)# from waiting_process to processing
+            real_task.next_state(opt=True, overrideTo='processing')# from waiting_process to processing
             pass
+
+        # @sio.event
+        # def all_chunks_received(sid, task):
+        #     real_task: Task = self.taskManager._task_map.get(task["task_id"])
+        #     target_sid: str = self.sessionManager.get_session((real_task.token))
+        #     sio.emit("ready_to_process")
 
         @sio.event
         def task_processing_ended(sid, task):
             real_task: Task = self.taskManager._task_map.get(task["task_id"])
             real_task.next_state(opt=True) # Or false, should see
+            target_sid = self.sessionManager.get_session((real_task.token))
+            sio.emit("update_now", {}, room=target_sid)
             pass
 
         # Step3 in response of the step 2 when send to service that he needs to tell when he is ready
@@ -45,6 +53,20 @@ class RemoteLocalClients:
 
             sio.emit('service_is_ready_to_receive_heavy_payload', task, room=client_sid)
 
+        # Step3B if webclient is using public_files 
+        @sio.event
+        def notify_payload_not_required(sid, task):
+            
+            # Get the task to be sure the client sid is up to date
+            real_task: Task = self.taskManager._task_map.get(task["task_id"])
+            real_task.next_state(opt=True)# assigned to waiting_upload if 
+
+            client_token: str = real_task.token
+
+            client_sid: str = self.sessionManager.get_session(client_token)
+
+            sio.emit('service_will_not_be_ready_to_receive_heavy_payload', task, room=client_sid)
+
         # Step1 for client, step2 for same user: Make service pulls a task
         @sio.event
         def pull_task(sid, task_identifier: str):
@@ -60,7 +82,7 @@ class RemoteLocalClients:
             task: Task = self.taskManager.pull_task(task_identifier)
 
             if not task:
-                print('Not any task!')
+                # print('Not any task!')
                 return False
         
             if task.has_assigned_service():
@@ -88,11 +110,16 @@ class RemoteLocalClients:
 
         @sio.event
         def update_task(sid, task):
-            print("task", task)
+            print("before", task)
             real_task: Task = self.taskManager._task_map.get(task["task_id"])
             print("real_task", real_task.__json__())
             real_task.progress = task["progress"]
+            real_task.data = task['data']
 
+            if real_task.data.get('error', False):
+                real_task.next_state(opt=True, overrideTo='ended_with_errors')
+
+            print("after", real_task.__json__())
             tasks: List[Task]= self.taskManager.get_by_token(real_task.token)
             serialized_tasks = [
                 # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
@@ -122,3 +149,12 @@ class RemoteLocalClients:
             target_sid = self.sessionManager.get_session((real_task.token))
             print("target_sid", target_sid)
             sio.emit("your_tasks", {"tasks": serialized_tasks}, room=target_sid)
+
+
+        @sio.event
+        def service_to_web_chunk(sid, chunk):
+            print('service_to_web_chunk', len(chunk['data']))
+            task: dict = chunk['task']
+            real_task: Task = self.taskManager._task_map.get(task["task_id"])
+            cliend_sid: str = self.sessionManager.get_session((real_task.token))
+            sio.emit("webclient_data_in", chunk, room=cliend_sid)

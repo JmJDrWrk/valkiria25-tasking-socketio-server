@@ -23,7 +23,6 @@ class WebClients:
         def my_tasks(sid):
             tasks = self.taskManager.get_by_token(self.sessionManager.get_session_by_sid(sid))
             serialized_tasks = [
-                # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
                 task.__json__()
                 for task in tasks
             ]
@@ -56,13 +55,13 @@ class WebClients:
             print(f"Client **** (SID: {sid}) pushed a task.")
 
             sio.emit("task_pushed", {task_identifier: task_identifier}, room=sid)
-            tasks: List[Task] = self.taskManager.get_by_token(token)
-            serialized_tasks = [
-                # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
-                task.__json__()
-                for task in tasks
-            ]
-            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
+            # tasks: List[Task] = self.taskManager.get_by_token(token)
+            # serialized_tasks = [
+            #     # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
+            #     task.__json__()
+            #     for task in tasks
+            # ]
+            # sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
 
         """This channel is for heavy-load-tasks"""
 
@@ -119,3 +118,24 @@ class WebClients:
                 chunkData,
                 room=service_sid
             )
+        
+        @sio.event
+        def delete_task(sid, taskId):
+            real_task: Task = self.taskManager.delete(taskId)
+            print('task deleted', real_task)
+            sio.emit('update_now', {}, room=sid)
+
+        #Requiers
+        @sio.event
+        def retrieve_task_file(sid, task):
+            real_task: Task = self.taskManager._task_map.get(task['task_id'])
+            service_token:str = real_task.assigned_service
+            service_sid:str = self.sessionManager.get_session(service_token)
+            sio.emit('retrieve_file_from_task', task , room=service_sid)
+
+        #NOt needed if serviceCLient updates this when finished
+        # def files_for_task(sid, task):
+        #     real_task: Task = self.taskManager._task_map.get(task['task_id'])
+        #     service_token:str = real_task.assigned_service
+        #     service_sid:str = self.sessionManager.get_session(service_token)
+        #     sio.emit('webclientapi_files_for_task', task, room=...)
