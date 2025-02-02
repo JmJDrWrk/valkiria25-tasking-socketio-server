@@ -55,13 +55,13 @@ class WebClients:
             print(f"Client **** (SID: {sid}) pushed a task.")
 
             sio.emit("task_pushed", {task_identifier: task_identifier}, room=sid)
-            # tasks: List[Task] = self.taskManager.get_by_token(token)
-            # serialized_tasks = [
-            #     # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
-            #     task.__json__()
-            #     for task in tasks
-            # ]
-            # sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
+            tasks: List[Task] = self.taskManager.get_by_token(token)
+            serialized_tasks = [
+                # {"task_id": task.task_id, "client_id": task.client_id, "data": task.data}
+                task.__json__()
+                for task in tasks
+            ]
+            sio.emit("your_tasks", {"tasks": serialized_tasks}, room=sid)
 
         """This channel is for heavy-load-tasks"""
 
