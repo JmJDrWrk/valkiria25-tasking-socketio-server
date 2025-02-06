@@ -41,10 +41,17 @@ class WebClients:
             client_as_json: dict = (
                 self.sessionManager.authenticationService.decrypt_token_to_json(token)
             )
+            # [clients_handler] loaded client_as_json {'id': 'ukn', 'role': 'webclient', 'business_logic': {'plan': 'free', 'tasks_today': 0}}
+            # [clients_handler] loaded webclient {'id': 'ukn', 'role': 'webclient', 'business_logic': {'plan': 'free', 'tasks_today': 0}}
             print("loaded client_as_json", client_as_json)
             client: WebClient = WebClient(**client_as_json)
 
             print("loaded webclient", client.__json__())
+            
+
+            # Determinate when a client is allowed to push
+
+
 
             print('t', task)
             

@@ -58,7 +58,11 @@ class RemoteLocalClients:
             #     print('Sending standard task to be processed')
             #     # sio.emit("begin_process", task.__json__(), room=sid)
             
+            client_token: str = task.token
+            client_sid: str = self.sessionManager.get_session(client_token)
+
             sio.emit("prepare_for_task", task.__json__(), room=sid)
+            sio.emit('update_now', {}, room=client_sid)
 
 
 
@@ -91,7 +95,17 @@ class RemoteLocalClients:
             sio.emit('service_will_not_be_ready_to_receive_heavy_payload', task, room=client_sid)
 
 
-            
+        #Receives something like, {'output_file_name': 'lake', 'prompt': 'A painting of a beautiful sunset over a calm lake', 'steps': 2, 'task_id': '8d2451a4-3fc0-4a24-8772-69f1d3c76813', 'progress': 50}
+        @sio.event
+        def update_progress_only(sid, progress):
+            print('progress', progress)
+            task: Task = self.taskManager._task_map.get(progress['task_id'])
+            task.progress = progress['progress']
+            task.data = progress
+            task.next_state(opt=True, overrideTo='processing')
+            print('task', task.__json__())
+            client_sid: str = self.sessionManager.get_session(task.token)
+            sio.emit('update_now', {}, room=client_sid)
 
         @sio.event
         def update_task(sid, task):
@@ -145,6 +159,12 @@ class RemoteLocalClients:
         def task_processing_started(sid, task):
             real_task: Task = self.taskManager._task_map.get(task["task_id"])
             real_task.next_state(opt=True, overrideTo='processing')# from waiting_process to processing
+
+            client_token: str = real_task.token
+            client_sid: str = self.sessionManager.get_session(client_token)
+
+            sio.emit('update_now', {}, room=client_sid)
+
             pass
 
         @sio.event
